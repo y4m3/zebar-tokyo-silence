@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" type="text/css" href="./styles.css" />
+    <script
+      src="https://unpkg.com/@babel/standalone@7.25.6/babel.min.js"
+      integrity="sha256-aS0B0wnsaDByLfE16h4MDCP1fQFccysd1YWOcV+gbBo="
+      crossorigin="anonymous"
+    ></script>
+  </head>
+  <body>
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+      import React, { useState, useEffect, useRef } from 'https://esm.sh/react@18?dev';
+      import { createRoot } from 'https://esm.sh/react-dom@18/client?dev';
+      import * as zebar from 'https://esm.sh/zebar@3.0';
+
+      const providers = zebar.createProviderGroup({
+        glazewm: { type: 'glazewm' },
+        date: { type: 'date', formatting: 'yyyy-MM-dd EEE HH:mm' },
+        cpu: { type: 'cpu' },
+        memory: { type: 'memory' },
+        battery: { type: 'battery' },
+        network: { type: 'network' },
+        media: { type: 'media' },
+      });
+
+      createRoot(document.getElementById('root')).render(<App />);
+
+      const ICONS = {
+        WIFI: {
+          off: '󰤭',
+          noInternet: '󰤮',
+          unconfigured: '󰤫',
+          ethernet: '󰈀',
+          strong: '󰤨',
+          good: '󰤥',
+          ok: '󰤢',
+          weak: '󰤟',
+          poor: '󰤯',
+        },
+        BATTERY: {
+          unknown: '󰂑',
+          charging: {
+            full: '󰂅',
+            high: '󰂋',
+            medHigh: '󰂊',
+            med: '󰢞',
+            mid: '󰂉',
+            lowMid: '󰢝',
+            low: '󰂈',
+            veryLow: '󰂇',
+            critical: '󰂆',
+            empty: '󰢜',
+          },
+          discharging: {
+            full: '󰁹',
+            high: '󰂂',
+            medHigh: '󰂁',
+            med: '󰂀',
+            mid: '󰁿',
+            lowMid: '󰁾',
+            low: '󰁽',
+            veryLow: '󰁼',
+            critical: '󰁻',
+            empty: '󰁺',
+          },
+        },
+      };
+
+      function getUsageClass(usage) {
+        if (usage >= 80) return 'critical';
+        if (usage >= 50) return 'warning';
+        return '';
+      }
+
+      function getBatteryClass(battery) {
+        if (!battery) return '';
+        if (battery.isCharging) return 'charging';
+        if (battery.chargePercent <= 20) return 'critical';
+        return '';
+      }
+
+      function getWifiIcon(network) {
+        if (!network) return ICONS.WIFI.off;
+        const interfaces = network.interfaces ?? [];
+        const defaultInterface =
+          network.defaultInterface ?? interfaces.find(i => i.default || i.isDefault);
+
+        const ethernetInterface = interfaces.find(
+          i =>
+            i.type === 'ethernet' &&
+            Array.isArray(i.ipv4Addresses) &&
+            i.ipv4Addresses.length > 0
+        );
+        const wifiInterface = interfaces.find(
+          i =>
+            i.type === 'wifi' &&
+            Array.isArray(i.ipv4Addresses) &&
+            i.ipv4Addresses.length > 0
+        );
+
+        const hasGateway = network.defaultGateway != null;
+        if (ethernetInterface) return ICONS.WIFI.ethernet;
+        if (wifiInterface) {
+          const signal = wifiInterface.signalStrength || 0;
+          if (signal >= 80) return ICONS.WIFI.strong;
+          if (signal >= 60) return ICONS.WIFI.good;
+          if (signal >= 40) return ICONS.WIFI.ok;
+          if (signal >= 20) return ICONS.WIFI.weak;
+          return ICONS.WIFI.poor;
+        }
+        if (defaultInterface && defaultInterface.type === 'wifi') {
+          return hasGateway ? ICONS.WIFI.poor : ICONS.WIFI.unconfigured;
+        }
+        return hasGateway ? ICONS.WIFI.off : ICONS.WIFI.noInternet;
+      }
+
+      function getBatteryIcon(battery) {
+        if (!battery) return ICONS.BATTERY.unknown;
+        const charge = battery.chargePercent || 0;
+        const charging = battery.isCharging;
+
+        if (charging) {
+          if (charge >= 90) return ICONS.BATTERY.charging.full;
+          if (charge >= 80) return ICONS.BATTERY.charging.high;
+          if (charge >= 70) return ICONS.BATTERY.charging.medHigh;
+          if (charge >= 60) return ICONS.BATTERY.charging.med;
+          if (charge >= 50) return ICONS.BATTERY.charging.mid;
+          if (charge >= 40) return ICONS.BATTERY.charging.lowMid;
+          if (charge >= 30) return ICONS.BATTERY.charging.low;
+          if (charge >= 20) return ICONS.BATTERY.charging.veryLow;
+          if (charge >= 10) return ICONS.BATTERY.charging.critical;
+          return ICONS.BATTERY.charging.empty;
+        }
+
+        if (charge >= 90) return ICONS.BATTERY.discharging.full;
+        if (charge >= 80) return ICONS.BATTERY.discharging.high;
+        if (charge >= 70) return ICONS.BATTERY.discharging.medHigh;
+        if (charge >= 60) return ICONS.BATTERY.discharging.med;
+        if (charge >= 50) return ICONS.BATTERY.discharging.mid;
+        if (charge >= 40) return ICONS.BATTERY.discharging.lowMid;
+        if (charge >= 30) return ICONS.BATTERY.discharging.low;
+        if (charge >= 20) return ICONS.BATTERY.discharging.veryLow;
+        if (charge >= 10) return ICONS.BATTERY.discharging.critical;
+        return ICONS.BATTERY.discharging.empty;
+      }
+
+      // Marquee text component for long titles
+      const MarqueeText = React.memo(function MarqueeText({ text, isPlaying }) {
+          const wrapperRef = useRef(null);
+          const textRef = useRef(null);
+          const unitRef = useRef(null);
+          const [shouldScroll, setShouldScroll] = useState(false);
+          const [isHover, setIsHover] = useState(false);
+          const distanceRef = useRef(0);
+          const unitWidthRef = useRef(0);
+          const offsetRef = useRef(0);
+
+          useEffect(() => {
+            const checkOverflow = () => {
+              if (unitRef.current && wrapperRef.current && textRef.current) {
+                const containerWidth = wrapperRef.current.clientWidth;
+                const unitWidth = unitRef.current.getBoundingClientRect().width;
+                const titleStyle = getComputedStyle(textRef.current);
+                const gap =
+                  parseFloat(titleStyle.columnGap || titleStyle.gap) || 0;
+                const distance = unitWidth + gap;
+
+                unitWidthRef.current = unitWidth;
+                distanceRef.current = distance;
+                setShouldScroll(containerWidth > 0 && unitWidth > containerWidth);
+              }
+            };
+
+            const timeoutId = setTimeout(() => {
+              document.fonts.ready.then(checkOverflow);
+            }, 100);
+
+            const resizeObserver = new ResizeObserver(checkOverflow);
+            if (wrapperRef.current) {
+              resizeObserver.observe(wrapperRef.current);
+            }
+
+            checkOverflow();
+
+            return () => {
+              clearTimeout(timeoutId);
+              resizeObserver.disconnect();
+            };
+          }, [text]);
+
+          useEffect(() => {
+            if (!shouldScroll || !isPlaying || !isHover || !textRef.current) {
+              if (textRef.current) {
+                offsetRef.current = 0;
+                textRef.current.style.transform = 'translate3d(0, 0, 0)';
+              }
+              return;
+            }
+
+            const speed =
+              parseFloat(
+                getComputedStyle(document.documentElement).getPropertyValue('--marquee-speed')
+              ) || 35; // px/s
+            let rafId = 0;
+            let lastTime = performance.now();
+
+            const step = time => {
+              const distance = distanceRef.current || 1;
+              const unitWidth = unitWidthRef.current || 0;
+              const containerWidth = wrapperRef.current?.clientWidth || 0;
+              if (!textRef.current || distance <= 0 || containerWidth <= 0 || unitWidth <= containerWidth) {
+                if (textRef.current) {
+                  offsetRef.current = 0;
+                  textRef.current.style.transform = 'translate3d(0, 0, 0)';
+                }
+                lastTime = time;
+                rafId = requestAnimationFrame(step);
+                return;
+              }
+
+              const dt = (time - lastTime) / 1000;
+              lastTime = time;
+              offsetRef.current -= speed * dt;
+              if (offsetRef.current <= -distance) {
+                offsetRef.current += distance;
+              }
+              textRef.current.style.transform = `translate3d(${offsetRef.current}px, 0, 0)`;
+              rafId = requestAnimationFrame(step);
+            };
+
+            rafId = requestAnimationFrame(step);
+            return () => cancelAnimationFrame(rafId);
+          }, [text, shouldScroll, isPlaying, isHover]);
+
+          return (
+            <div
+              className="media-title-wrapper"
+              ref={wrapperRef}
+              onMouseEnter={() => setIsHover(true)}
+              onMouseLeave={() => {
+                setIsHover(false);
+                if (isPlaying && textRef.current) {
+                  offsetRef.current = 0;
+                  textRef.current.style.transform = 'translate3d(0, 0, 0)';
+                }
+              }}
+            >
+              <span
+                ref={textRef}
+                className={`media-title ${shouldScroll ? 'scrolling' : ''}`}
+              >
+                {/* Always render 2 units for correct overflow detection */}
+                <span ref={unitRef} className="media-title-unit">{text}</span>
+                {shouldScroll && (
+                  <span className="media-title-unit" aria-hidden="true">{text}</span>
+                )}
+              </span>
+            </div>
+          );
+        });
+
+      function App() {
+        const [output, setOutput] = useState(providers.outputMap);
+
+        useEffect(() => {
+          const unsubscribe = providers.onOutput(() => {
+            setOutput({ ...providers.outputMap });
+          });
+          return () => {
+            if (typeof unsubscribe === 'function') {
+              unsubscribe();
+            }
+          };
+        }, []);
+
+        return (
+          <div className="bar">
+            {/* Left: GlazeWM Workspaces, State, and Media */}
+            <div className="left">
+              {output.glazewm && (
+                <>
+                  <div className="workspaces">
+                    {output.glazewm.currentWorkspaces?.map(ws => (
+                      <button
+                        key={ws.name}
+                        className={`workspace ${ws.hasFocus ? 'active' : ''} ${ws.isDisplayed ? 'displayed' : ''}`}
+                        onClick={() => output.glazewm.runCommand(`focus --workspace ${ws.name}`)}
+                      >
+                        {ws.displayName || ws.name}
+                      </button>
+                    ))}
+                  </div>
+
+                  {output.glazewm.isPaused && (
+                    <div className="chip paused">PAUSED</div>
+                  )}
+
+                  <button
+                    className="chip tiling"
+                    onClick={() => output.glazewm.runCommand('toggle-tiling-direction')}
+                  >
+                    <span className="icon">
+                      {output.glazewm.tilingDirection === 'horizontal' ? '󰯍' : '󰯎'}
+                    </span>
+                  </button>
+                </>
+              )}
+
+              {output.media?.currentSession && (
+                <div
+                  className="media"
+                  onClick={() => output.media.togglePlayPause()}
+                >
+                  <span className="media-icon">
+                    {output.media.currentSession.isPlaying ? '󰏤' : '󰐊'}
+                  </span>
+                  <MarqueeText
+                    text={output.media.currentSession.title}
+                    isPlaying={output.media.currentSession.isPlaying}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Center: Date/Time */}
+            <div className="center">
+              {output.date && (
+                <div className="datetime">
+                  {output.date.formatted}
+                </div>
+              )}
+            </div>
+
+            {/* Right: System Info */}
+            <div className="right">
+              {/* Network/WiFi */}
+              <div className="chip network">
+                <span className="icon">{getWifiIcon(output.network)}</span>
+              </div>
+
+              {/* CPU */}
+              {output.cpu && (
+                <div className={`chip cpu ${getUsageClass(output.cpu.usage)}`}>
+                  <span className="label">CPU</span>
+                  <span className="value">{Math.round(output.cpu.usage)}%</span>
+                </div>
+              )}
+
+              {/* Memory */}
+              {output.memory && (
+                <div className={`chip memory ${getUsageClass(output.memory.usage)}`}>
+                  <span className="label">Mem</span>
+                  <span className="value">{Math.round(output.memory.usage)}%</span>
+                </div>
+              )}
+
+              {/* Battery */}
+              {output.battery && (
+                <div className={`chip battery ${getBatteryClass(output.battery)}`}>
+                  <span className="icon">{getBatteryIcon(output.battery)}</span>
+                  <span className="value">{Math.round(output.battery.chargePercent)}%</span>
+                </div>
+              )}
+
+            </div>
+          </div>
+        );
+      }
+
+    </script>
+  </body>
+</html>
