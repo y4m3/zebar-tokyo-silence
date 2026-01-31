@@ -13,6 +13,7 @@
   --yellow: #e0af68;
   --red: #f7768e;
   --magenta: #bb9af7;
+  --bg-hover: #1f202e;
   --bar-item-height: 17px;
   --icon-optical-shift: -0.04em;
   --marquee-gap: 8rem;
@@ -161,7 +162,7 @@ body,
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1em;
+  gap: 0.15em;
   transform: translateX(var(--icon-optical-shift));
 }
 
@@ -204,7 +205,7 @@ body,
 }
 
 .chip.tiling:hover {
-  background: #1f202e;
+  background: var(--bg-hover);
 }
 
 .tiling .icon {
@@ -219,8 +220,15 @@ body,
 
 .chip.network {
   justify-content: center;
-  min-width: 22px;
-  padding: 0px 7px 0px 3px;
+  padding: 0px 6px;
+}
+
+.network .ssid {
+  font-size: 11px;
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Media controls */
@@ -239,7 +247,7 @@ body,
 }
 
 .media:hover {
-  background: #1f202e;
+  background: var(--bg-hover);
 }
 
 .media-icon {
